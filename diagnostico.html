@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Comunicador CAA — Diagnóstico</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: #10141c;
+    color: #e8ecf4;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+  }
+
+  #app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  h1 { font-size: 1.2rem; font-weight: 600; }
+
+  #estado-voz {
+    font-size: 0.9rem;
+    color: #9aa5b8;
+    max-width: 50%;
+  }
+
+  #botones {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  button {
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 14px 22px;
+    border: 3px solid #2c3648;
+    border-radius: 12px;
+    background: #1b2230;
+    color: #e8ecf4;
+    cursor: pointer;
+  }
+
+  button:focus-visible, button:hover {
+    border-color: #4dd47a;
+    background: #223047;
+    outline: none;
+  }
+
+  #ultimo-evento {
+    background: #1b2230;
+    border: 3px solid #2c3648;
+    border-radius: 14px;
+    padding: 14px 18px;
+    text-align: center;
+  }
+
+  #ultimo-evento .etiqueta {
+    font-size: 0.85rem;
+    color: #9aa5b8;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  #ultimo-evento .valor {
+    font-size: 2.6rem;
+    font-weight: 800;
+    color: #4dd47a;
+    line-height: 1.2;
+    word-break: break-all;
+  }
+
+  #ultimo-evento .detalle {
+    font-size: 1rem;
+    color: #c3ccdc;
+    font-family: ui-monospace, Consolas, monospace;
+  }
+
+  #registro {
+    flex: 1;
+    overflow-y: auto;
+    background: #141a26;
+    border: 2px solid #232c3d;
+    border-radius: 12px;
+    padding: 10px;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+
+  .fila { padding: 3px 6px; border-bottom: 1px solid #1d2534; }
+  .fila .tipo { font-weight: 700; margin-right: 8px; }
+  .fila .tipo.teclado { color: #6db4ff; }
+  .fila .tipo.gamepad { color: #ffb86b; }
+  .fila .rep { color: #4dd47a; font-weight: 700; margin-left: 8px; }
+
+  footer {
+    font-size: 0.85rem;
+    color: #7d8798;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>🎮 Diagnóstico del mando</h1>
+    <div id="estado-voz">Cargando voces…</div>
+  </header>
+
+  <div id="botones">
+    <button id="btn-probar-voz">🔊 Probar voz</button>
+    <button id="btn-limpiar">🧹 Limpiar registro</button>
+  </div>
+
+  <div id="ultimo-evento">
+    <div class="etiqueta">Último evento recibido</div>
+    <div class="valor" id="evento-valor">— pulsa algo en el mando —</div>
+    <div class="detalle" id="evento-detalle">&nbsp;</div>
+  </div>
+
+  <div id="registro"></div>
+
+  <footer>
+    Mueve el joystick y pulsa cada botón del mando, uno por uno.
+    Anota qué aparece para cada uno. Azul = evento de teclado · Naranja = evento de gamepad.
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   1) REGISTRO DE EVENTOS
+   ============================================================ */
+const registro = document.getElementById("registro");
+const eventoValor = document.getElementById("evento-valor");
+const eventoDetalle = document.getElementById("evento-detalle");
+
+let ultimaClave = null;
+let ultimaFila = null;
+let repeticiones = 1;
+
+function anotar(tipo, valor, detalle) {
+  const clave = tipo + "|" + valor + "|" + detalle;
+
+  eventoValor.textContent = valor;
+  eventoDetalle.textContent = detalle;
+
+  // Comprimir repeticiones consecutivas (mantener pulsado, temblores…)
+  if (clave === ultimaClave && ultimaFila) {
+    repeticiones++;
+    ultimaFila.querySelector(".rep").textContent = "×" + repeticiones;
+    return;
+  }
+
+  ultimaClave = clave;
+  repeticiones = 1;
+
+  const fila = document.createElement("div");
+  fila.className = "fila";
+  fila.innerHTML =
+    '<span class="tipo ' + (tipo === "TECLADO" ? "teclado" : "gamepad") + '">' + tipo + "</span>" +
+    "<span>" + valor + "</span> " +
+    '<span style="color:#8a94a8">' + detalle + "</span>" +
+    '<span class="rep"></span>';
+  registro.prepend(fila);
+  ultimaFila = fila;
+
+  // Limitar el registro a 200 filas
+  while (registro.children.length > 200) registro.lastChild.remove();
+}
+
+document.getElementById("btn-limpiar").addEventListener("click", () => {
+  registro.innerHTML = "";
+  ultimaClave = null;
+  ultimaFila = null;
+  eventoValor.textContent = "— pulsa algo en el mando —";
+  eventoDetalle.innerHTML = "&nbsp;";
+});
+
+/* ============================================================
+   2) EVENTOS DE TECLADO
+   Muchos mandos BT en modo teclado emiten flechas/enter/teclas
+   multimedia. Registramos key, code y keyCode porque algunos
+   mandos baratos mandan key="Unidentified" y solo dan keyCode.
+   ============================================================ */
+window.addEventListener("keydown", (e) => {
+  // Evitar scroll o acciones del navegador durante el diagnóstico
+  e.preventDefault();
+  if (e.repeat) return; // la autorepetición se registra como ×N al mantener
+  anotar("TECLADO", e.key === " " ? "Espacio" : e.key,
+         "code=" + e.code + "  keyCode=" + e.keyCode);
+}, true);
+
+/* ============================================================
+   3) API GAMEPAD
+   Algunos mandos aparecen como HID gamepad: botones y ejes no
+   generan eventos, hay que sondearlos en cada frame.
+   ============================================================ */
+const estadoPads = {}; // por índice de gamepad: {botones:[], ejes:[]}
+
+window.addEventListener("gamepadconnected", (e) => {
+  anotar("GAMEPAD", "Conectado", '"' + e.gamepad.id + '" (' +
+         e.gamepad.buttons.length + " botones, " + e.gamepad.axes.length + " ejes)");
+});
+
+window.addEventListener("gamepaddisconnected", (e) => {
+  anotar("GAMEPAD", "Desconectado", '"' + e.gamepad.id + '"');
+  delete estadoPads[e.gamepad.index];
+});
+
+function sondearGamepads() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (const pad of pads) {
+    if (!pad) continue;
+    let estado = estadoPads[pad.index];
+    if (!estado) {
+      estado = estadoPads[pad.index] = {
+        botones: pad.buttons.map(b => b.pressed),
+        ejes: pad.axes.map(() => 0),
+      };
+    }
+
+    pad.buttons.forEach((b, i) => {
+      if (b.pressed !== estado.botones[i]) {
+        estado.botones[i] = b.pressed;
+        if (b.pressed) anotar("GAMEPAD", "Botón " + i, "pulsado (pad " + pad.index + ")");
+      }
+    });
+
+    // Ejes: solo anotar cuando cruzan el umbral, cuantizados a una dirección
+    pad.axes.forEach((v, i) => {
+      const dir = v > 0.5 ? 1 : v < -0.5 ? -1 : 0;
+      if (dir !== estado.ejes[i]) {
+        estado.ejes[i] = dir;
+        if (dir !== 0) {
+          anotar("GAMEPAD", "Eje " + i + (dir > 0 ? " ➕" : " ➖"),
+                 "valor=" + v.toFixed(2) + " (pad " + pad.index + ")");
+        }
+      }
+    });
+  }
+  requestAnimationFrame(sondearGamepads);
+}
+requestAnimationFrame(sondearGamepads);
+
+/* ============================================================
+   4) TEXT-TO-SPEECH (API speechSynthesis)
+   ============================================================ */
+const estadoVoz = document.getElementById("estado-voz");
+let vozEspanola = null;
+
+function cargarVoces() {
+  const voces = speechSynthesis.getVoices();
+  if (!voces.length) return;
+  const espanolas = voces.filter(v => v.lang.toLowerCase().startsWith("es"));
+  // Preferir es-ES si existe; si no, cualquier variante de español
+  vozEspanola = espanolas.find(v => v.lang.toLowerCase().startsWith("es-es")) || espanolas[0] || null;
+  estadoVoz.textContent = vozEspanola
+    ? "🗣 Voz: " + vozEspanola.name + " (" + vozEspanola.lang + ") · " + espanolas.length + " en español"
+    : "⚠️ Sin voz en español (" + voces.length + " voces en total)";
+}
+
+speechSynthesis.addEventListener("voiceschanged", cargarVoces);
+cargarVoces();
+
+function hablar(texto) {
+  speechSynthesis.cancel(); // cortar lo anterior: prioridad a lo nuevo
+  const u = new SpeechSynthesisUtterance(texto);
+  if (vozEspanola) u.voice = vozEspanola;
+  u.lang = vozEspanola ? vozEspanola.lang : "es-ES";
+  u.rate = 1.0;
+  speechSynthesis.speak(u);
+}
+
+document.getElementById("btn-probar-voz").addEventListener("click", () => {
+  hablar("Hola, esto es una prueba del comunicador.");
+});
+</script>
+</body>
+</html>

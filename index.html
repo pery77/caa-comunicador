@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#10141c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Comunicador CAA</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: #10141c;
+    color: #e8ecf4;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  #app {
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  /* ---------- Fila superior: texto + HABLAR ---------- */
+  #fila-texto {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+  }
+
+  #btn-repetir { font-size: 1.5rem; padding: 0 18px; }
+
+  #caja-texto {
+    background: #1b2230;
+    border: 3px solid #2c3648;
+    border-radius: 12px;
+    padding: 10px 16px;
+    font-size: 2rem;
+    font-weight: 600;
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  /* Cursor parpadeante al final del texto */
+  #caja-texto::after {
+    content: "";
+    display: inline-block;
+    width: 3px;
+    height: 1.2em;
+    margin-left: 2px;
+    background: #4dd47a;
+    animation: parpadeo 1s steps(1) infinite;
+  }
+  @keyframes parpadeo { 50% { opacity: 0; } }
+
+  /* ---------- Botones base ---------- */
+  .boton {
+    border: 3px solid #2c3648;
+    border-radius: 12px;
+    background: #1b2230;
+    color: #e8ecf4;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.07s ease-out;
+  }
+
+  /* Feedback visual extremo del foco (principio nº 3).
+     Con !important: el foco debe ganar SIEMPRE a cualquier tinte de grupo. */
+  .enfocado {
+    border-color: #ffd24d !important;
+    background: #4a3d10 !important;
+    color: #fff !important;
+    transform: scale(1.08);
+    box-shadow: 0 0 0 3px #ffd24d66, 0 0 22px #ffd24daa;
+    z-index: 5;
+    position: relative;
+  }
+
+  /* Destello al confirmar */
+  .pulsado { background: #4dd47a !important; border-color: #4dd47a !important; color: #10141c !important; }
+
+  #btn-hablar {
+    font-size: 1.5rem;
+    padding: 0 28px;
+    background: #173322;
+    border-color: #2f6647;
+  }
+
+  /* ---------- Fila de predicciones (se activa en Fase 4) ---------- */
+  #predicciones {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    height: 52px;
+  }
+  .prediccion { font-size: 1.3rem; color: #55617a; }
+  .prediccion:empty::after { content: "·"; }
+  .prediccion:not(:empty) {
+    color: #e8ecf4;
+    background: #16283c;
+    border-color: #2e527d;
+    font-weight: 700;
+  }
+
+  /* ---------- Zona central: matriz + frases rápidas ---------- */
+  #central {
+    display: grid;
+    grid-template-columns: 1fr 230px;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  #matriz {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    gap: 6px;
+  }
+  #matriz .boton { font-size: 1.9rem; }
+
+  /* Grupos visuales de la matriz: tintes sutiles, el foco domina igual */
+  #matriz .vocal {                 /* vocales: se ven de un vistazo */
+    background: #17273a;
+    border-color: #254164;
+    color: #ffe9c2;
+  }
+  #matriz .signo {                 /* puntuación: atenuada, no compite con letras */
+    background: #161b26;
+    color: #8a94a8;
+  }
+  #matriz .rara { color: #7d8798; } /* K, W, X: apagadas, el ojo las salta */
+
+  #frases {
+    display: grid;
+    grid-template-rows: repeat(7, 1fr);
+    gap: 6px;
+  }
+  #frases .boton {
+    font-size: 1.15rem;
+    line-height: 1.2;
+    padding: 4px 8px;
+    background: #241b30;
+    border-color: #45325e;
+  }
+  #frases .alternador {
+    background: #1b2230;
+    border-color: #2c3648;
+    color: #9aa5b8;
+    font-size: 1rem;
+  }
+  #frases .aviso {
+    color: #55617a;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    grid-row: span 6;
+  }
+
+  /* ---------- Barra de acciones inferior ---------- */
+  #acciones {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 8px;
+    height: 62px;
+  }
+  #acciones .boton { font-size: 1.2rem; }
+
+  /* Indicador de estado (mando + voz), discreto */
+  #estado {
+    position: fixed;
+    right: 10px;
+    top: 2px;
+    font-size: 0.7rem;
+    color: #55617a;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="estado">mando: — · voz: —</div>
+<div id="app">
+
+  <div id="fila-texto">
+    <div id="caja-texto"><span id="texto"></span></div>
+    <div class="boton" id="btn-hablar" data-accion="hablar">🔊 HABLAR</div>
+    <div class="boton" id="btn-repetir" data-accion="repetir" title="Repetir lo último dicho">🔁</div>
+  </div>
+
+  <div id="predicciones">
+    <!-- Fase 4: se rellenan con el motor de predicción. Vacías no reciben foco. -->
+    <div class="boton prediccion" data-prediccion="0"></div>
+    <div class="boton prediccion" data-prediccion="1"></div>
+    <div class="boton prediccion" data-prediccion="2"></div>
+    <div class="boton prediccion" data-prediccion="3"></div>
+    <div class="boton prediccion" data-prediccion="4"></div>
+  </div>
+
+  <div id="central">
+    <div id="matriz"></div>
+    <div id="frases"></div>
+  </div>
+
+  <div id="acciones">
+    <div class="boton" data-accion="espacio">␣ ESPACIO</div>
+    <div class="boton" data-accion="borrar-letra">⌫ LETRA</div>
+    <div class="boton" data-accion="borrar-palabra">⌫ PALABRA</div>
+    <div class="boton" data-accion="borrar-todo">✕ TODO</div>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   1) DATOS: matriz de letras y frases rápidas
+   Matriz 6×5 por frecuencia del español, con la E en el centro
+   (2,2). Las letras más frecuentes quedan a 0–2 saltos.
+   ============================================================ */
+const FILAS_MATRIZ = [
+  ["J", "P", "N", "B", "Ñ", ","],
+  ["G", "I", "A", "D", "V", "X"],
+  ["L", "O", "E", "S", "C", "Y"],
+  ["Q", "T", "R", "U", "H", "K"],
+  ["W", "F", "M", "Z", ".", "?"],
+];
+
+const FRASES_RAPIDAS = [
+  "Sí",
+  "No",
+  "Me duele algo",
+  "Tengo sed",
+  "Necesito ir al baño",
+  "Ven, por favor",
+];
+
+/* ============================================================
+   2) CONSTRUCCIÓN DE LA INTERFAZ
+   ============================================================ */
+const VOCALES = "AEIOU";
+const SIGNOS = ",.?";
+const LETRAS_RARAS = "KWX";
+
+const matriz = document.getElementById("matriz");
+for (const fila of FILAS_MATRIZ) {
+  for (const letra of fila) {
+    const b = document.createElement("div");
+    b.className = "boton";
+    if (VOCALES.includes(letra)) b.classList.add("vocal");
+    else if (SIGNOS.includes(letra)) b.classList.add("signo");
+    else if (LETRAS_RARAS.includes(letra)) b.classList.add("rara");
+    b.textContent = letra;
+    b.dataset.letra = letra;
+    matriz.appendChild(b);
+  }
+}
+
+// La columna derecha (frases fijas ↔ recientes) se pinta en la sección 6b,
+// cuando ya existe el historial.
+const frases = document.getElementById("frases");
+
+/* ============================================================
+   3) TEXTO Y ACCIONES
+   ============================================================ */
+const nodoTexto = document.getElementById("texto");
+let texto = "";
+
+function pintarTexto() {
+  nodoTexto.textContent = texto;
+  actualizarPredicciones();
+}
+
+function activar(el) {
+  // Destello de confirmación
+  el.classList.add("pulsado");
+  setTimeout(() => el.classList.remove("pulsado"), 160);
+
+  if (el.dataset.letra) {
+    // Las letras se añaden en minúscula; puntuación tal cual
+    const l = el.dataset.letra;
+    texto += /[A-ZÑ]/.test(l) ? l.toLowerCase() : l;
+  } else if (el.dataset.frase) {
+    hablar(el.dataset.frase); // acceso directo: habla sin tocar la caja
+  } else if (el.dataset.prediccion !== undefined) {
+    aceptarPrediccion(el.textContent);
+  } else switch (el.dataset.accion) {
+    case "hablar":
+      if (texto.trim()) {
+        aprender(texto);
+        recordarFrase(texto.trim());
+        hablar(texto);
+        texto = "";
+      }
+      break;
+    case "repetir":
+      if (ultimaLocucion) hablar(ultimaLocucion);
+      break;
+    case "alternar-columna":
+      columnaModo = columnaModo === "frases" ? "recientes" : "frases";
+      pintarColumna();
+      enfocar(frases.firstChild); // el foco sigue en el alternador nuevo
+      break;
+    case "espacio":
+      if (texto && !texto.endsWith(" ")) texto += " ";
+      break;
+    case "borrar-letra":
+      texto = texto.slice(0, -1);
+      break;
+    case "borrar-palabra":
+      texto = texto.replace(/\s*\S+\s*$/, "");
+      break;
+    case "borrar-todo":
+      texto = "";
+      break;
+  }
+  pintarTexto();
+}
+
+// Soporte táctil/ratón (útil para el cuidador)
+document.addEventListener("click", (e) => {
+  const el = e.target.closest(".boton");
+  if (el && esEnfocable(el)) { enfocar(el); activar(el); }
+});
+
+/* ============================================================
+   4) NAVEGACIÓN ESPACIAL (motor geométrico)
+   El foco salta al elemento enfocable más cercano en la
+   dirección pedida, penalizando el desvío lateral. Sin scroll,
+   sin envolver bordes: rutas 100% predecibles.
+   ============================================================ */
+let elementoEnfocado = null;
+
+function esEnfocable(el) {
+  // Regla general: una casilla sin contenido no recibe foco
+  return el.classList.contains("boton") && !!el.textContent;
+}
+
+function enfocables() {
+  return [...document.querySelectorAll(".boton")].filter(esEnfocable);
+}
+
+function enfocar(el) {
+  if (elementoEnfocado) elementoEnfocado.classList.remove("enfocado");
+  elementoEnfocado = el;
+  el.classList.add("enfocado");
+}
+
+function centro(el) {
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
+function mover(dx, dy) {
+  if (!elementoEnfocado) return;
+  const origen = centro(elementoEnfocado);
+  let mejor = null, mejorPuntos = Infinity;
+
+  for (const el of enfocables()) {
+    if (el === elementoEnfocado) continue;
+    const c = centro(el);
+    const avance = (c.x - origen.x) * dx + (c.y - origen.y) * dy;   // distancia en la dirección pedida
+    if (avance < 8) continue;                                       // debe estar claramente en esa dirección
+    const desvio = Math.abs((c.x - origen.x) * dy) + Math.abs((c.y - origen.y) * dx);
+    const puntos = avance + desvio * 2.5;                           // penalizar el desvío lateral
+    if (puntos < mejorPuntos) { mejorPuntos = puntos; mejor = el; }
+  }
+  if (mejor) enfocar(mejor);
+}
+
+// Foco inicial: la E, el centro de la matriz
+enfocar([...matriz.children].find(b => b.dataset.letra === "E"));
+
+/* ============================================================
+   5) CAPA DE ENTRADA UNIFICADA
+   El mando de este usuario (VR remote) emite a la vez varias
+   fuentes para un mismo gesto físico:
+     - joystick → ejes analógicos 0/1 Y cruceta "hat" en eje 9
+     - un botón físico → ráfaga de varios botones (1+7+9…) y a
+       veces también una tecla F19
+   Por eso todo pasa por dos embudos con deduplicación:
+     pedirMovimiento(dx, dy)  y  pedirConfirmar()
+   ============================================================ */
+const ZONA_MUERTA_ON  = 0.6;   // el eje debe superar esto para activar
+const ZONA_MUERTA_OFF = 0.35;  // …y bajar de esto para soltarse (histéresis anti-temblor)
+const RETARDO_INICIAL = 400;   // ms antes de auto-repetir manteniendo dirección
+const RITMO_REPETICION = 190;  // ms entre repeticiones
+const DEDUPE_MOV = 90;         // ms: ignora movimientos duplicados de fuentes distintas
+const DEDUPE_CONFIRMAR = 250;  // ms: una ráfaga de botones = una sola pulsación
+
+let ultimoMovimiento = 0;
+let ultimoBoton = 0;
+
+function pedirMovimiento(dx, dy, minMs) {
+  const ahora = performance.now();
+  if (ahora - ultimoMovimiento < (minMs || DEDUPE_MOV)) return;
+  ultimoMovimiento = ahora;
+  mover(dx, dy);
+}
+
+// Una ráfaga de códigos de botón (<250 ms) = una sola acción física
+function accionUnica(fn) {
+  const ahora = performance.now();
+  if (ahora - ultimoBoton < DEDUPE_CONFIRMAR) return;
+  ultimoBoton = ahora;
+  desbloquearVoz();
+  fn();
+}
+
+function pedirConfirmar() {
+  accionUnica(() => { if (elementoEnfocado) activar(elementoEnfocado); });
+}
+
+function pedirBorrarLetra() {
+  // Activa el botón BORRAR LETRA de la interfaz: misma lógica y destello
+  accionUnica(() => activar(document.querySelector('[data-accion="borrar-letra"]')));
+}
+
+/* ----- 5a) Teclado (flechas, Enter, F19 del mando) ----- */
+const TECLAS_MOVIMIENTO = {
+  ArrowUp:    [0, -1],
+  ArrowDown:  [0, 1],
+  ArrowLeft:  [-1, 0],
+  ArrowRight: [1, 0],
+};
+
+window.addEventListener("keydown", (e) => {
+  e.preventDefault();
+  desbloquearVoz();
+  const dir = TECLAS_MOVIMIENTO[e.key];
+  if (dir) {
+    // La autorepetición del teclado se frena al mismo ritmo que el joystick
+    pedirMovimiento(dir[0], dir[1], e.repeat ? RITMO_REPETICION : undefined);
+    return;
+  }
+  if (e.key === "Backspace") { pedirBorrarLetra(); return; }
+  if (e.key === "Enter" || e.key === "F19" || e.key === " ") pedirConfirmar();
+}, true);
+
+/* ----- 5b) Gamepad: sondeo por frame ----- */
+// Decodifica el "hat" (cruceta) estándar de Android: reposo ≈ 3.29,
+// y las 8 direcciones codificadas de -1.0 (arriba) a +1.0 en pasos de 2/7.
+function direccionHat(v) {
+  if (v < -1.05 || v > 1.05) return null; // 3.29 = reposo
+  const sector = Math.round((v + 1) / (2 / 7)) % 8; // 0=N 1=NE 2=E 3=SE 4=S 5=SO 6=O 7=NO
+  return [
+    [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1],
+  ][sector];
+}
+
+// En el mapeo "standard" de la API Gamepad (habitual en Android), la cruceta
+// llega como botones 12-15. Son MOVIMIENTO, nunca confirmación: sin esto,
+// mover el joystick en la tablet también "pulsaba" la casilla por la que pasaba.
+const BOTONES_DPAD = { 12: [0, -1], 13: [0, 1], 14: [-1, 0], 15: [1, 0] };
+
+// Atajo físico: el segundo botón del mando borra la última letra sin mover
+// el foco. Un mismo botón físico emite ráfagas distintas según el SO:
+// en PC/Windows 1+7+9, en Android 1+5. Se mapea el grupo completo.
+const BOTONES_BORRAR = { 1: true, 5: true, 7: true, 9: true };
+
+const estadoPads = {}; // por gamepad: {botones:[], dir, dirDesde, ultimaRepeticion}
+
+function sondearGamepads() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  const ahora = performance.now();
+
+  for (const pad of pads) {
+    if (!pad) continue;
+    let est = estadoPads[pad.index];
+    if (!est) {
+      est = estadoPads[pad.index] = { botones: pad.buttons.map(b => b.pressed), dir: null };
+      indicarEstado();
+    }
+
+    // Botones: flanco de subida → confirmar o borrar según el grupo,
+    // EXCEPTO los de la cruceta, que son movimiento
+    pad.buttons.forEach((b, i) => {
+      if (b.pressed && !est.botones[i] && !(i in BOTONES_DPAD)) {
+        if (i in BOTONES_BORRAR) pedirBorrarLetra();
+        else pedirConfirmar();
+      }
+      est.botones[i] = b.pressed;
+    });
+
+    // Dirección combinada: analógico (ejes 0/1) con histéresis, o hat (eje 9)
+    const x = pad.axes[0] ?? 0, y = pad.axes[1] ?? 0;
+    let dir = null;
+    const umbral = est.dir ? ZONA_MUERTA_OFF : ZONA_MUERTA_ON;
+    if (Math.abs(x) > umbral || Math.abs(y) > umbral) {
+      // Quedarse con el eje dominante: nada de diagonales accidentales
+      dir = Math.abs(x) >= Math.abs(y) ? [Math.sign(x), 0] : [0, Math.sign(y)];
+    }
+    if (!dir) {
+      // Cruceta como botones 12-15 (mapeo estándar de Android)
+      for (const i in BOTONES_DPAD) {
+        if (pad.buttons[i] && pad.buttons[i].pressed) { dir = BOTONES_DPAD[i]; break; }
+      }
+    }
+    if (!dir && pad.axes.length > 9) {
+      const hat = direccionHat(pad.axes[9]);
+      if (hat && (hat[0] === 0 || hat[1] === 0)) dir = hat; // solo direcciones puras
+    }
+
+    const clave = dir ? dir[0] + "," + dir[1] : null;
+    if (clave !== est.dirClave) {
+      // Cambio de dirección: mover una casilla ya
+      est.dirClave = clave;
+      est.dir = dir;
+      est.dirDesde = ahora;
+      est.ultimaRepeticion = ahora;
+      if (dir) pedirMovimiento(dir[0], dir[1]);
+    } else if (dir && ahora - est.dirDesde > RETARDO_INICIAL &&
+               ahora - est.ultimaRepeticion > RITMO_REPETICION) {
+      // Mantener la dirección: auto-repetición controlada
+      est.ultimaRepeticion = ahora;
+      pedirMovimiento(dir[0], dir[1]);
+    }
+  }
+  requestAnimationFrame(sondearGamepads);
+}
+requestAnimationFrame(sondearGamepads);
+
+window.addEventListener("gamepadconnected", indicarEstado);
+window.addEventListener("gamepaddisconnected", (e) => {
+  delete estadoPads[e.gamepad.index];
+  indicarEstado();
+});
+
+/* ============================================================
+   6) MOTOR DE PREDICCIÓN (Fase 4, offline)
+   Diccionario embebido ordenado por frecuencia de uso
+   conversacional (función + vida diaria + salud). El
+   emparejamiento ignora tildes (la matriz no tiene acentos):
+   escribir "medico" sugiere "médico". Las palabras que el
+   usuario dice con HABLAR se aprenden en localStorage y suben
+   de rango; las desconocidas (nombres propios…) se incorporan.
+   ============================================================ */
+const PALABRAS = ("de,la,que,el,en,y,a,los,se,del,las,un,por,con,no,una,su,para,es,al,lo,como,más,pero,me,le,si,sí,ya,mi,yo,te,muy,está,estoy,hay,este,esta,eso,esto,cuando,todo,también,porque,qué,quiero,necesito,tengo,puedes,ahora,luego,bien,mal,mejor,peor,gracias,favor,hola,adiós,vale,claro,perdona,ayuda,ayúdame,agua,dolor,duele,duelen,cansado,cansada,mucho,poco,algo,nada,otro,otra,igual," +
+  "dame,tráeme,ponme,quítame,abre,cierra,enciende,apaga,sube,baja,ven,espera,vamos,llama,mira,oye,escucha,para,sigue,despacio,deprisa,fuerte,flojo,arriba,abajo,dentro,fuera,aquí,allí,cerca,lejos," +
+  "comida,comer,beber,pan,leche,café,fruta,sopa,carne,pescado,huevo,queso,yogur,galletas,azúcar,sal,hambre,sed,desayuno,cena,cuchara,tenedor,vaso,plato,servilleta," +
+  "baño,ducha,pis,caca,pañal,jabón,toalla,peine,cepillo,pasta,afeitar,cortar,uñas,limpiar,lavar,cambiar,vestir,desnudar," +
+  "cama,silla,sillón,mesa,puerta,ventana,luz,manta,almohada,sábanas,frío,calor,dormir,sueño,siesta,descansar,despertar,levantar,levántame,siéntame,acuéstame,muéveme,gírame,postura,cojín," +
+  "medicina,pastilla,pastillas,médico,médica,doctora,doctor,hospital,enfermera,enfermero,cita,receta,cabeza,espalda,cuello,hombro,brazo,pierna,rodilla,mano,pie,pecho,tripa,estómago,garganta,boca,ojo,ojos,oído,nariz,diente,muela,herida,picor,mareo,mareado,mareada,tensión,azúcar,fiebre,tos,respirar," +
+  "contento,contenta,triste,enfadado,enfadada,nervioso,nerviosa,tranquilo,tranquila,cómodo,cómoda,incómodo,incómoda,miedo,aburrido,aburrida,solo,sola,caliente,fría,frío," +
+  "familia,hijo,hija,hijos,hermano,hermana,madre,padre,mamá,papá,mujer,marido,amigo,amiga,abuelo,abuela,nieto,nieta,vecino,vecina,gente,persona,señor,señora,chico,chica,niño,niña,perro,gato," +
+  "tele,televisión,mando,canal,película,música,radio,teléfono,móvil,tablet,foto,fotos,vídeo,llamada,mensaje,gafas,audífono,libro,periódico,revista,juego,cartas," +
+  "ropa,camiseta,pantalón,zapatos,zapatillas,chaqueta,abrigo,calcetines,pañuelo,reloj,llaves,bolso,cartera,cargador,dinero," +
+  "casa,calle,cocina,salón,habitación,cuarto,jardín,terraza,coche,farmacia,tienda,supermercado,iglesia,parque,pueblo,ciudad,paseo,fisio,ejercicio," +
+  "hora,rato,momento,minuto,pronto,tarde,temprano,hoy,mañana,ayer,noche,mediodía,semana,mes,lunes,martes,miércoles,jueves,viernes,sábado,domingo,cumpleaños,fiesta,visita," +
+  "quién,cómo,cuándo,dónde,cuánto,cuál,ir,ver,hacer,decir,saber,querer,poner,dejar,venir,salir,volver,esperar,buscar,pedir,recordar,olvidar,entender,preguntar,gustar,doler,cosa,cosas,problema,pregunta,nombre,número,palabra,verdad,mentira,importante,urgente").split(",");
+
+// Sugerencias cuando aún no hay letra escrita (inicio de palabra)
+const ARRANQUE = ["quiero", "necesito", "tengo", "estoy", "puedes"];
+
+// Normaliza para comparar: minúsculas y sin tildes, preservando la ñ
+function normalizar(s) {
+  return s.toLowerCase().replace(/ñ/g, "\x01")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\x01/g, "ñ");
+}
+const PALABRAS_NORM = PALABRAS.map(normalizar);
+
+// Memoria personal (persiste en el dispositivo):
+//   usos  → cuántas veces ha dicho cada palabra
+//   pares → bigramas: qué palabra suele seguir a cada palabra
+let usos = {};
+let pares = {};
+try { usos = JSON.parse(localStorage.getItem("caa_usos")) || {}; } catch (e) {}
+try { pares = JSON.parse(localStorage.getItem("caa_pares")) || {}; } catch (e) {}
+
+function aprender(frase) {
+  const palabras = frase.toLowerCase().split(/[^a-záéíóúüñ]+/i).filter(p => p);
+  for (const p of palabras) {
+    if (p.length >= 3) usos[p] = (usos[p] || 0) + 1;
+  }
+  for (let i = 0; i < palabras.length - 1; i++) {
+    const a = palabras[i], b = palabras[i + 1];
+    (pares[a] = pares[a] || {})[b] = (pares[a][b] || 0) + 1;
+  }
+  try {
+    localStorage.setItem("caa_usos", JSON.stringify(usos));
+    localStorage.setItem("caa_pares", JSON.stringify(pares));
+  } catch (e) {}
+}
+
+// Última palabra completa escrita (la anterior al parcial en curso)
+function palabraAnterior() {
+  const partes = texto.trim().split(/\s+/);
+  const idx = parcialActual() ? partes.length - 2 : partes.length - 1;
+  const p = (partes[idx] || "").toLowerCase().replace(/[^a-záéíóúüñ]/g, "");
+  return p || null;
+}
+
+function parcialActual() {
+  const m = texto.match(/(\S+)$/);
+  return m ? m[1] : "";
+}
+
+function candidatas(parcialNorm, siguientes) {
+  // puntuación: posición en el diccionario, con gran descuento por uso
+  // personal y descuento aún mayor si suele seguir a la palabra anterior
+  const puntuar = (palabra, base) =>
+    base - (usos[palabra] || 0) * 100 - ((siguientes && siguientes[palabra]) || 0) * 1000;
+  const lista = [];
+
+  PALABRAS.forEach((palabra, i) => {
+    if (PALABRAS_NORM[i].startsWith(parcialNorm)) {
+      lista.push([palabra, puntuar(palabra, i)]);
+    }
+  });
+  // Palabras aprendidas que no están en el diccionario (nombres propios…)
+  for (const palabra in usos) {
+    if (!PALABRAS.includes(palabra) && normalizar(palabra).startsWith(parcialNorm)) {
+      lista.push([palabra, puntuar(palabra, PALABRAS.length)]);
+    }
+  }
+
+  lista.sort((a, b) => a[1] - b[1]);
+  const unicas = [...new Set(lista.map(x => x[0]))];
+  return unicas.slice(0, 5);
+}
+
+const casillasPrediccion = [...document.querySelectorAll(".prediccion")];
+
+function actualizarPredicciones() {
+  const parcial = normalizar(parcialActual());
+  const anterior = palabraAnterior();
+  const siguientes = (anterior && pares[anterior]) || null;
+  let lista;
+  if (!parcial) {
+    // Inicio de palabra: primero lo que suele seguir a la palabra anterior,
+    // luego lo más usado por el usuario, y de relleno arranques útiles
+    const porPares = siguientes
+      ? Object.entries(siguientes).sort((a, b) => b[1] - a[1]).map(e => e[0])
+      : [];
+    const usadas = Object.entries(usos).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+    lista = [...new Set([...porPares.slice(0, 4), ...usadas.slice(0, 3), ...ARRANQUE])].slice(0, 5);
+  } else {
+    lista = candidatas(parcial, siguientes);
+  }
+  casillasPrediccion.forEach((c, i) => { c.textContent = lista[i] || ""; });
+
+  // Si el foco estaba en una casilla que se ha quedado vacía, volver a la E
+  if (elementoEnfocado && elementoEnfocado.classList.contains("prediccion") &&
+      !elementoEnfocado.textContent) {
+    enfocar([...matriz.children].find(b => b.dataset.letra === "E"));
+  }
+}
+
+function aceptarPrediccion(palabra) {
+  if (!palabra) return;
+  const parcial = parcialActual();
+  texto = texto.slice(0, texto.length - parcial.length) + palabra + " ";
+}
+
+actualizarPredicciones(); // pintar las sugerencias de arranque
+
+/* ============================================================
+   6b) COLUMNA DERECHA: frases rápidas ↔ frases recientes
+   El alternador de arriba cambia entre las frases fijas de
+   urgencia y las últimas frases dichas (guardadas en el
+   dispositivo), para repetir sin reescribir.
+   ============================================================ */
+let historial = [];
+try { historial = JSON.parse(localStorage.getItem("caa_historial")) || []; } catch (e) {}
+
+let columnaModo = "frases";
+
+function recordarFrase(f) {
+  historial = [f, ...historial.filter(x => x !== f)].slice(0, 12);
+  try { localStorage.setItem("caa_historial", JSON.stringify(historial)); } catch (e) {}
+  if (columnaModo === "recientes") pintarColumna();
+}
+
+function pintarColumna() {
+  frases.innerHTML = "";
+
+  const alternador = document.createElement("div");
+  alternador.className = "boton alternador";
+  alternador.dataset.accion = "alternar-columna";
+  alternador.textContent = columnaModo === "frases" ? "🕒 RECIENTES" : "⭐ FRASES";
+  frases.appendChild(alternador);
+
+  const contenido = columnaModo === "frases" ? FRASES_RAPIDAS : historial.slice(0, 6);
+  for (const f of contenido) {
+    const b = document.createElement("div");
+    b.className = "boton";
+    b.textContent = f;
+    b.dataset.frase = f;
+    frases.appendChild(b);
+  }
+
+  if (columnaModo === "recientes" && !contenido.length) {
+    const aviso = document.createElement("div");
+    aviso.className = "aviso";
+    aviso.textContent = "Aún no hay frases dichas";
+    frases.appendChild(aviso);
+  }
+
+  // Si el foco estaba en un nodo que ya no existe, volver al alternador
+  if (elementoEnfocado && !document.contains(elementoEnfocado)) {
+    enfocar(frases.firstChild);
+  }
+}
+
+pintarColumna();
+
+/* ============================================================
+   7) TEXT-TO-SPEECH (speechSynthesis)
+   ============================================================ */
+let vozEspanola = null;
+let vozDesbloqueada = false;
+
+function cargarVoces() {
+  const voces = speechSynthesis.getVoices();
+  if (!voces.length) return;
+  const espanolas = voces.filter(v => v.lang.toLowerCase().startsWith("es"));
+  vozEspanola = espanolas.find(v => v.lang.toLowerCase().startsWith("es-es")) || espanolas[0] || null;
+  indicarEstado();
+}
+speechSynthesis.addEventListener("voiceschanged", cargarVoces);
+cargarVoces();
+
+// Chrome exige un gesto de usuario antes de poder hablar: la primera
+// interacción (toque o tecla) lanza una locución vacía que lo desbloquea.
+function desbloquearVoz() {
+  if (vozDesbloqueada) return;
+  vozDesbloqueada = true;
+  const u = new SpeechSynthesisUtterance("");
+  u.volume = 0;
+  speechSynthesis.speak(u);
+}
+document.addEventListener("pointerdown", desbloquearVoz, { once: true });
+
+let ultimaLocucion = "";
+
+function hablar(textoAHablar) {
+  ultimaLocucion = textoAHablar; // para el botón 🔁 REPETIR
+  speechSynthesis.cancel(); // prioridad a lo nuevo
+  const u = new SpeechSynthesisUtterance(textoAHablar);
+  if (vozEspanola) u.voice = vozEspanola;
+  u.lang = vozEspanola ? vozEspanola.lang : "es-ES";
+  u.rate = 1.0;
+  speechSynthesis.speak(u);
+}
+
+/* ============================================================
+   8) Indicador discreto de estado
+   ============================================================ */
+function indicarEstado() {
+  const nPads = Object.keys(estadoPads).length;
+  document.getElementById("estado").textContent =
+    "mando: " + (nPads ? "✔" : "—") + " · voz: " + (vozEspanola ? vozEspanola.lang : "—");
+}
+indicarEstado();
+
+/* ============================================================
+   9) PWA: pantalla siempre encendida y funcionamiento offline
+   Ambas APIs requieren contexto seguro (HTTPS o localhost);
+   durante el desarrollo por http:// simplemente no se activan.
+   ============================================================ */
+let bloqueoPantalla = null;
+async function mantenerPantallaEncendida() {
+  if (!("wakeLock" in navigator) || bloqueoPantalla) return;
+  try {
+    bloqueoPantalla = await navigator.wakeLock.request("screen");
+    bloqueoPantalla.addEventListener("release", () => { bloqueoPantalla = null; });
+  } catch (e) { /* sin soporte o sin HTTPS: no pasa nada */ }
+}
+document.addEventListener("pointerdown", mantenerPantallaEncendida);
+window.addEventListener("keydown", mantenerPantallaEncendida);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) mantenerPantallaEncendida(); // reactivar al volver a la app
+});
+
+if ("serviceWorker" in navigator &&
+    (location.protocol === "https:" || location.hostname === "localhost")) {
+  navigator.serviceWorker.register("sw.js");
+}
+</script>
+</body>
+</html>
