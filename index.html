@@ -561,10 +561,11 @@ const BOTONES_DPAD = { 12: [0, -1], 13: [0, 1], 14: [-1, 0], 15: [1, 0] };
 // en PC/Windows 1+7+9, en Android 1+5. Se mapea el grupo completo.
 const BOTONES_BORRAR = { 1: true, 5: true, 7: true, 9: true };
 
-// Dos botones extra pendientes de identificar en Android (ver el log
-// "[entrada] mando: botón N" por consola): rellenar aquí sus índices.
-const BOTONES_HABLAR  = {}; // p. ej. { 3: true }: dirá lo escrito directamente
-const BOTONES_ESPACIO = {}; // p. ej. { 4: true }: espacio sin mover el foco
+// Botón extra → HABLAR directo (dice lo escrito y limpia la caja, sin mover
+// el foco). El 10 lo recuerda el usuario de memoria; si en la tablet no
+// responde o hace otra cosa, verificar con el log "[entrada] mando: botón N".
+const BOTONES_HABLAR  = { 10: true };
+const BOTONES_ESPACIO = {}; // reservado: aún sin botón físico asignado
 
 const estadoPads = {}; // por gamepad: {botones:[], dir, dirDesde, ultimaRepeticion}
 
