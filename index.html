@@ -293,6 +293,10 @@
 <script>
 "use strict";
 
+// Subir en cada despliegue: se muestra en la esquina de estado para poder
+// comprobar de un vistazo qué versión está corriendo la tablet
+const VERSION = "v2026-08-18c";
+
 /* ============================================================
    1) DATOS: matriz de letras y frases rápidas
    Matriz 6×5 por frecuencia del español, con la E en el centro
@@ -523,8 +527,9 @@ const TECLAS_MOVIMIENTO = {
 
 window.addEventListener("keydown", (e) => {
   e.preventDefault();
-  // Identificación de botones: ver en chrome://inspect (o F12) qué emite el mando
+  // Identificación de botones: consola y esquina de estado en pantalla
   console.log("[entrada] tecla:", e.key, "· code:", e.code, "· keyCode:", e.keyCode);
+  if (!TECLAS_MOVIMIENTO[e.key]) anotarEntrada(e.key);
   desbloquearVoz();
   const dir = TECLAS_MOVIMIENTO[e.key];
   if (dir) {
@@ -587,6 +592,7 @@ function sondearGamepads() {
       if (b.pressed && !est.botones[i]) {
         console.log("[entrada] mando: botón", i);
         if (!(i in BOTONES_DPAD)) {
+          anotarEntrada("b" + i);
           if (i in BOTONES_BORRAR) pedirAccionGlobal("borrar-letra");
           else if (i in BOTONES_HABLAR) pedirAccionGlobal("hablar");
           else if (i in BOTONES_ESPACIO) pedirAccionGlobal("espacio");
@@ -945,10 +951,24 @@ function hablar(textoAHablar) {
 /* ============================================================
    8) Indicador discreto de estado
    ============================================================ */
+// Última entrada recibida, visible en la esquina para identificar botones
+// del mando SIN necesitar la consola (los códigos de una misma ráfaga,
+// <300 ms, se encadenan: "b1+b7+b9")
+let ultimaEntrada = "";
+let ultimaEntradaMs = 0;
+function anotarEntrada(txt) {
+  const ahora = performance.now();
+  ultimaEntrada = (ahora - ultimaEntradaMs < 300 && ultimaEntrada) ? ultimaEntrada + "+" + txt : txt;
+  ultimaEntradaMs = ahora;
+  indicarEstado();
+}
+
 function indicarEstado() {
   const nPads = Object.keys(estadoPads).length;
   document.getElementById("estado").textContent =
-    "mando: " + (nPads ? "✔" : "—") + " · voz: " + (vozEspanola ? vozEspanola.lang : "—");
+    VERSION + " · mando: " + (nPads ? "✔" : "—") +
+    " · voz: " + (vozEspanola ? vozEspanola.lang : "—") +
+    (ultimaEntrada ? " · últ: " + ultimaEntrada : "");
 }
 indicarEstado();
 
