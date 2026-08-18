@@ -295,7 +295,7 @@
 
 // Subir en cada despliegue: se muestra en la esquina de estado para poder
 // comprobar de un vistazo qué versión está corriendo la tablet
-const VERSION = "v2026-08-18c";
+const VERSION = "v2026-08-18d";
 
 /* ============================================================
    1) DATOS: matriz de letras y frases rápidas
@@ -567,9 +567,8 @@ const BOTONES_DPAD = { 12: [0, -1], 13: [0, 1], 14: [-1, 0], 15: [1, 0] };
 const BOTONES_BORRAR = { 1: true, 5: true, 7: true, 9: true };
 
 // Botón extra → HABLAR directo (dice lo escrito y limpia la caja, sin mover
-// el foco). El 10 lo recuerda el usuario de memoria; si en la tablet no
-// responde o hace otra cosa, verificar con el log "[entrada] mando: botón N".
-const BOTONES_HABLAR  = { 10: true };
+// el foco). Índice 8 confirmado por el usuario con el indicador "últ:" en la tablet.
+const BOTONES_HABLAR  = { 8: true };
 const BOTONES_ESPACIO = {}; // reservado: aún sin botón físico asignado
 
 const estadoPads = {}; // por gamepad: {botones:[], dir, dirDesde, ultimaRepeticion}
