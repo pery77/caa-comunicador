@@ -55,7 +55,7 @@ El proyecto se desarrolla en fases iterativas (no escribir todo el código de go
 
 ## 📌 Estado del Proyecto (actualizar al avanzar)
 
-**Última actualización:** 2026-08-17 (Fase 3 implementada con los códigos reales del mando)
+**Última actualización:** 2026-08-18 (pantalla completa de frases guardadas: favoritas, borrar, paginación)
 
 - ✅ **Fase 1 completada** — Diseño acordado:
   - Matriz de letras 6×5 organizada por frecuencia del español, con la **E en el centro** (letras frecuentes a 0–2 saltos). El foco **no vuelve al centro** tras cada letra (foco persistente).
@@ -79,7 +79,7 @@ El proyecto se desarrolla en fases iterativas (no escribir todo el código de go
 
 - ✅ **Mejoras post-MVP implementadas:**
   - **REPETIR** (🔁 junto a HABLAR): vuelve a decir la última locución.
-  - **Frases recientes:** la columna derecha alterna entre frases fijas y las últimas 12 frases dichas (persisten en `localStorage`, clave `caa_historial`), con botón alternador arriba de la columna.
+  - **Pantalla de frases guardadas** (sustituye a la columna alternadora frases↔recientes, que se quedaba pequeña): botón "🕒 GUARDADAS" arriba de la columna derecha abre una pantalla completa (`#pantalla-frases`; `#app` se oculta con `body.en-frases`, y `esEnfocable` filtra por `offsetParent` para que el foco no salte a la pantalla oculta). Muestra **favoritas primero** (clave `caa_favoritas`, nunca caducan) y luego las últimas frases dichas (`caa_historial`, ampliado de 12 a 60), **paginadas de 10 en 10** (◀ 1/3 ▶; flechas `.deshabilitado` no enfocables). Barra superior con VOLVER (también Escape en PC) y **selector de modo**: pulsar una frase la habla / la marca-desmarca ⭐ / la borra según el modo activo — así cada frase es un solo botón sin submenús, y la lista entera se tiñe (ámbar/rojo) para anticipar el efecto. Siempre se entra en modo hablar y con el foco en la primera frase; al volver, el foco regresa a la E. **La columna derecha muestra las 6 primeras favoritas como accesos rápidos** (el usuario elige sus frases marcándolas ⭐); solo si no hay ninguna se ofrecen las frases fijas de urgencia (`FRASES_RAPIDAS`). Verificado con test en Node (stubs de DOM): apertura, modos, borrado, paginación, recolocación de foco y tope del historial.
   - **Predicción de palabra siguiente:** bigramas personales (`caa_pares`) aprendidos de lo que dice el usuario; con la caja en inicio de palabra se sugiere lo que suele seguir a la palabra anterior, y durante la escritura los seguidores habituales reciben gran bono de ranking. Todo con test en Node.
   - **Grupos visuales en la matriz:** vocales con tinte cálido (localizables de un vistazo), puntuación atenuada, K/W/X apagadas. Decisión de diseño: NO colorear más grupos de consonantes (más de 2-3 categorías de color = ruido visual que ralentiza la búsqueda; las consonantes frecuentes ya están codificadas por su posición central). El resaltado de foco usa `!important` para dominar sobre cualquier tinte.
   - Descartado por hardware: "gatillo = aceptar predicción" (el gatillo ES el botón 0 en este mando VR de una mano). Descartado de momento: frases editables por el cuidador.

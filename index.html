@@ -163,14 +163,65 @@
     color: #9aa5b8;
     font-size: 1rem;
   }
-  #frases .aviso {
+  .aviso {
     color: #55617a;
     font-size: 0.95rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    grid-row: span 6;
   }
+  #frases .aviso { grid-row: span 6; }
+
+  /* ---------- Pantalla de frases guardadas ---------- */
+  #pantalla-frases {
+    display: none;
+    height: 100%;
+    padding: 8px;
+    grid-template-rows: 56px 1fr;
+    gap: 10px;
+  }
+  body.en-frases #app { display: none; }
+  body.en-frases #pantalla-frases { display: grid; }
+
+  #pf-superior {
+    display: grid;
+    grid-template-columns: auto 1fr 1fr 1fr 64px auto 64px;
+    gap: 8px;
+  }
+  #pf-superior .boton { font-size: 1.1rem; padding: 0 14px; }
+  #pf-pagina {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 70px;
+    color: #55617a;
+    font-weight: 700;
+  }
+
+  /* El modo activo se marca en verde (el foco amarillo domina igual) */
+  .pf-modo.modo-activo { background: #173322; border-color: #2f6647; }
+
+  #pf-lista {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: repeat(5, 1fr);
+    gap: 8px;
+    min-height: 0;
+  }
+  #pf-lista .boton {
+    font-size: 1.4rem;
+    line-height: 1.25;
+    padding: 6px 14px;
+    background: #241b30;
+    border-color: #45325e;
+  }
+  #pf-lista .aviso { grid-column: span 2; grid-row: span 5; font-size: 1.2rem; }
+
+  /* Tinte de toda la lista según el modo: se ve qué va a pasar al pulsar */
+  #pantalla-frases.modo-favorita #pf-lista .boton { background: #2b2413; border-color: #8a7a2b; }
+  #pantalla-frases.modo-borrar   #pf-lista .boton { background: #2d1717; border-color: #8a3b3b; }
+
+  .deshabilitado { opacity: 0.35; pointer-events: none; }
 
   /* ---------- Barra de acciones inferior ---------- */
   #acciones {
@@ -223,6 +274,20 @@
     <div class="boton" data-accion="borrar-todo">✕ TODO</div>
   </div>
 
+</div>
+
+<!-- Pantalla completa de frases guardadas (favoritas + recientes, paginada) -->
+<div id="pantalla-frases">
+  <div id="pf-superior">
+    <div class="boton" id="pf-volver" data-accion="volver-principal">⬅ VOLVER</div>
+    <div class="boton pf-modo" data-modo="hablar">🔊 HABLAR</div>
+    <div class="boton pf-modo" data-modo="favorita">⭐ FAVORITA</div>
+    <div class="boton pf-modo" data-modo="borrar">🗑 BORRAR</div>
+    <div class="boton" id="pf-prev" data-accion="pf-prev">◀</div>
+    <div id="pf-pagina">1 / 1</div>
+    <div class="boton" id="pf-next" data-accion="pf-next">▶</div>
+  </div>
+  <div id="pf-lista"></div>
 </div>
 
 <script>
@@ -299,6 +364,11 @@ function activar(el) {
     hablar(el.dataset.frase); // acceso directo: habla sin tocar la caja
   } else if (el.dataset.prediccion !== undefined) {
     aceptarPrediccion(el.textContent);
+  } else if (el.dataset.guardada) {
+    accionGuardada(el.dataset.guardada);
+  } else if (el.dataset.modo) {
+    modoFrases = el.dataset.modo;
+    pintarGuardadas();
   } else switch (el.dataset.accion) {
     case "hablar":
       if (texto.trim()) {
@@ -311,10 +381,18 @@ function activar(el) {
     case "repetir":
       if (ultimaLocucion) hablar(ultimaLocucion);
       break;
-    case "alternar-columna":
-      columnaModo = columnaModo === "frases" ? "recientes" : "frases";
-      pintarColumna();
-      enfocar(frases.firstChild); // el foco sigue en el alternador nuevo
+    case "abrir-guardadas":
+      abrirGuardadas();
+      break;
+    case "volver-principal":
+      cerrarGuardadas();
+      break;
+    case "pf-prev":
+      if (paginaFrases > 0) { paginaFrases--; pintarGuardadas(); }
+      break;
+    case "pf-next":
+      paginaFrases++; // pintarGuardadas() recorta si se pasa
+      pintarGuardadas();
       break;
     case "espacio":
       if (texto && !texto.endsWith(" ")) texto += " ";
@@ -347,8 +425,11 @@ document.addEventListener("click", (e) => {
 let elementoEnfocado = null;
 
 function esEnfocable(el) {
-  // Regla general: una casilla sin contenido no recibe foco
-  return el.classList.contains("boton") && !!el.textContent;
+  // Regla general: una casilla sin contenido no recibe foco.
+  // offsetParent === null → está en la pantalla oculta (solo una pantalla
+  // está visible a la vez); .deshabilitado → flecha de página sin destino.
+  return el.classList.contains("boton") && !!el.textContent &&
+         !el.classList.contains("deshabilitado") && el.offsetParent !== null;
 }
 
 function enfocables() {
@@ -449,6 +530,10 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "Backspace") { pedirBorrarLetra(); return; }
+  if (e.key === "Escape") {
+    if (document.body.classList.contains("en-frases")) accionUnica(cerrarGuardadas);
+    return;
+  }
   if (e.key === "Enter" || e.key === "F19" || e.key === " ") pedirConfirmar();
 }, true);
 
@@ -671,32 +756,36 @@ function aceptarPrediccion(palabra) {
 actualizarPredicciones(); // pintar las sugerencias de arranque
 
 /* ============================================================
-   6b) COLUMNA DERECHA: frases rápidas ↔ frases recientes
-   El alternador de arriba cambia entre las frases fijas de
-   urgencia y las últimas frases dichas (guardadas en el
-   dispositivo), para repetir sin reescribir.
+   6b) COLUMNA DERECHA: frases rápidas de urgencia + botón que
+   abre la pantalla completa de frases guardadas.
    ============================================================ */
 let historial = [];
 try { historial = JSON.parse(localStorage.getItem("caa_historial")) || []; } catch (e) {}
 
-let columnaModo = "frases";
+let favoritas = [];
+try { favoritas = JSON.parse(localStorage.getItem("caa_favoritas")) || []; } catch (e) {}
+
+function guardarHistorial() {
+  try { localStorage.setItem("caa_historial", JSON.stringify(historial)); } catch (e) {}
+}
 
 function recordarFrase(f) {
-  historial = [f, ...historial.filter(x => x !== f)].slice(0, 12);
-  try { localStorage.setItem("caa_historial", JSON.stringify(historial)); } catch (e) {}
-  if (columnaModo === "recientes") pintarColumna();
+  historial = [f, ...historial.filter(x => x !== f)].slice(0, 60);
+  guardarHistorial();
 }
 
 function pintarColumna() {
   frases.innerHTML = "";
 
-  const alternador = document.createElement("div");
-  alternador.className = "boton alternador";
-  alternador.dataset.accion = "alternar-columna";
-  alternador.textContent = columnaModo === "frases" ? "🕒 RECIENTES" : "⭐ FRASES";
-  frases.appendChild(alternador);
+  const abridor = document.createElement("div");
+  abridor.className = "boton alternador";
+  abridor.dataset.accion = "abrir-guardadas";
+  abridor.textContent = "🕒 GUARDADAS";
+  frases.appendChild(abridor);
 
-  const contenido = columnaModo === "frases" ? FRASES_RAPIDAS : historial.slice(0, 6);
+  // El usuario elige sus accesos rápidos marcando favoritas ⭐; mientras
+  // no tenga ninguna, se ofrecen las frases fijas de urgencia
+  const contenido = favoritas.length ? favoritas.slice(0, 6) : FRASES_RAPIDAS;
   for (const f of contenido) {
     const b = document.createElement("div");
     b.className = "boton";
@@ -704,21 +793,101 @@ function pintarColumna() {
     b.dataset.frase = f;
     frases.appendChild(b);
   }
-
-  if (columnaModo === "recientes" && !contenido.length) {
-    const aviso = document.createElement("div");
-    aviso.className = "aviso";
-    aviso.textContent = "Aún no hay frases dichas";
-    frases.appendChild(aviso);
-  }
-
-  // Si el foco estaba en un nodo que ya no existe, volver al alternador
-  if (elementoEnfocado && !document.contains(elementoEnfocado)) {
-    enfocar(frases.firstChild);
-  }
 }
 
 pintarColumna();
+
+/* ============================================================
+   6c) PANTALLA DE FRASES GUARDADAS
+   Pantalla completa con las favoritas primero y luego las
+   últimas frases dichas, paginadas de 10 en 10. Un selector de
+   modo decide qué hace pulsar una frase (hablar / marcar
+   favorita / borrar): así cada frase es UN solo botón y no hace
+   falta un submenú por frase. La lista entera se tiñe según el
+   modo para que se vea qué va a pasar antes de pulsar.
+   ============================================================ */
+const POR_PAGINA = 10;
+let paginaFrases = 0;
+let modoFrases = "hablar";
+
+const pantallaFrases = document.getElementById("pantalla-frases");
+const pfLista = document.getElementById("pf-lista");
+
+function guardarFavoritas() {
+  try { localStorage.setItem("caa_favoritas", JSON.stringify(favoritas)); } catch (e) {}
+  pintarColumna(); // la columna derecha muestra las primeras favoritas
+}
+
+// Favoritas primero (nunca caducan), después el resto del historial
+function listaGuardadas() {
+  return [...favoritas, ...historial.filter(f => !favoritas.includes(f))];
+}
+
+function abrirGuardadas() {
+  modoFrases = "hablar"; // siempre se entra en el modo seguro
+  paginaFrases = 0;
+  document.body.classList.add("en-frases");
+  pintarGuardadas();
+  enfocar(pfLista.querySelector(".boton") || document.getElementById("pf-volver"));
+}
+
+function cerrarGuardadas() {
+  document.body.classList.remove("en-frases");
+  enfocar([...matriz.children].find(b => b.dataset.letra === "E"));
+}
+
+function pintarGuardadas() {
+  const lista = listaGuardadas();
+  const totalPaginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA));
+  if (paginaFrases >= totalPaginas) paginaFrases = totalPaginas - 1;
+
+  pantallaFrases.classList.toggle("modo-favorita", modoFrases === "favorita");
+  pantallaFrases.classList.toggle("modo-borrar", modoFrases === "borrar");
+  document.querySelectorAll(".pf-modo").forEach(b =>
+    b.classList.toggle("modo-activo", b.dataset.modo === modoFrases));
+
+  document.getElementById("pf-pagina").textContent = (paginaFrases + 1) + " / " + totalPaginas;
+  document.getElementById("pf-prev").classList.toggle("deshabilitado", paginaFrases === 0);
+  document.getElementById("pf-next").classList.toggle("deshabilitado", paginaFrases >= totalPaginas - 1);
+
+  pfLista.innerHTML = "";
+  for (const f of lista.slice(paginaFrases * POR_PAGINA, (paginaFrases + 1) * POR_PAGINA)) {
+    const b = document.createElement("div");
+    b.className = "boton";
+    b.textContent = (favoritas.includes(f) ? "⭐ " : "") + f;
+    b.dataset.guardada = f;
+    pfLista.appendChild(b);
+  }
+  if (!lista.length) {
+    const aviso = document.createElement("div");
+    aviso.className = "aviso";
+    aviso.textContent = "Aún no hay frases guardadas: se añaden al decirlas con HABLAR";
+    pfLista.appendChild(aviso);
+  }
+
+  // Si el foco quedó en un nodo borrado o en una flecha ya deshabilitada,
+  // recolocarlo en la primera frase (o en VOLVER si no queda ninguna)
+  if (elementoEnfocado &&
+      (!document.contains(elementoEnfocado) || !esEnfocable(elementoEnfocado))) {
+    enfocar(pfLista.querySelector(".boton") || document.getElementById("pf-volver"));
+  }
+}
+
+function accionGuardada(f) {
+  if (modoFrases === "hablar") {
+    hablar(f); // solo habla: la lista no se reordena bajo el foco
+  } else if (modoFrases === "favorita") {
+    favoritas = favoritas.includes(f) ? favoritas.filter(x => x !== f) : [f, ...favoritas];
+    guardarFavoritas();
+    pintarGuardadas();
+  } else if (modoFrases === "borrar") {
+    favoritas = favoritas.filter(x => x !== f);
+    historial = historial.filter(x => x !== f);
+    guardarFavoritas();
+    guardarHistorial();
+    pintarGuardadas();
+  }
+}
 
 /* ============================================================
    7) TEXT-TO-SPEECH (speechSynthesis)
