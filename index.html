@@ -507,9 +507,10 @@ function pedirConfirmar() {
   accionUnica(() => { if (elementoEnfocado) activar(elementoEnfocado); });
 }
 
-function pedirBorrarLetra() {
-  // Activa el botón BORRAR LETRA de la interfaz: misma lógica y destello
-  accionUnica(() => activar(document.querySelector('[data-accion="borrar-letra"]')));
+// Activa un botón de la interfaz por su acción: misma lógica y destello
+// que pulsarlo con el foco, pero sin mover el foco
+function pedirAccionGlobal(accion) {
+  accionUnica(() => activar(document.querySelector('[data-accion="' + accion + '"]')));
 }
 
 /* ----- 5a) Teclado (flechas, Enter, F19 del mando) ----- */
@@ -522,6 +523,8 @@ const TECLAS_MOVIMIENTO = {
 
 window.addEventListener("keydown", (e) => {
   e.preventDefault();
+  // Identificación de botones: ver en chrome://inspect (o F12) qué emite el mando
+  console.log("[entrada] tecla:", e.key, "· code:", e.code, "· keyCode:", e.keyCode);
   desbloquearVoz();
   const dir = TECLAS_MOVIMIENTO[e.key];
   if (dir) {
@@ -529,7 +532,7 @@ window.addEventListener("keydown", (e) => {
     pedirMovimiento(dir[0], dir[1], e.repeat ? RITMO_REPETICION : undefined);
     return;
   }
-  if (e.key === "Backspace") { pedirBorrarLetra(); return; }
+  if (e.key === "Backspace") { pedirAccionGlobal("borrar-letra"); return; }
   if (e.key === "Escape") {
     if (document.body.classList.contains("en-frases")) accionUnica(cerrarGuardadas);
     return;
@@ -558,6 +561,11 @@ const BOTONES_DPAD = { 12: [0, -1], 13: [0, 1], 14: [-1, 0], 15: [1, 0] };
 // en PC/Windows 1+7+9, en Android 1+5. Se mapea el grupo completo.
 const BOTONES_BORRAR = { 1: true, 5: true, 7: true, 9: true };
 
+// Dos botones extra pendientes de identificar en Android (ver el log
+// "[entrada] mando: botón N" por consola): rellenar aquí sus índices.
+const BOTONES_HABLAR  = {}; // p. ej. { 3: true }: dirá lo escrito directamente
+const BOTONES_ESPACIO = {}; // p. ej. { 4: true }: espacio sin mover el foco
+
 const estadoPads = {}; // por gamepad: {botones:[], dir, dirDesde, ultimaRepeticion}
 
 function sondearGamepads() {
@@ -575,9 +583,14 @@ function sondearGamepads() {
     // Botones: flanco de subida → confirmar o borrar según el grupo,
     // EXCEPTO los de la cruceta, que son movimiento
     pad.buttons.forEach((b, i) => {
-      if (b.pressed && !est.botones[i] && !(i in BOTONES_DPAD)) {
-        if (i in BOTONES_BORRAR) pedirBorrarLetra();
-        else pedirConfirmar();
+      if (b.pressed && !est.botones[i]) {
+        console.log("[entrada] mando: botón", i);
+        if (!(i in BOTONES_DPAD)) {
+          if (i in BOTONES_BORRAR) pedirAccionGlobal("borrar-letra");
+          else if (i in BOTONES_HABLAR) pedirAccionGlobal("hablar");
+          else if (i in BOTONES_ESPACIO) pedirAccionGlobal("espacio");
+          else pedirConfirmar();
+        }
       }
       est.botones[i] = b.pressed;
     });
@@ -951,8 +964,23 @@ async function mantenerPantallaEncendida() {
     bloqueoPantalla.addEventListener("release", () => { bloqueoPantalla = null; });
   } catch (e) { /* sin soporte o sin HTTPS: no pasa nada */ }
 }
+// Respaldo de pantalla completa: el "display: fullscreen" del manifest solo
+// aplica si la app está INSTALADA como PWA. Abierta en una pestaña normal,
+// el primer gesto del usuario la pone a pantalla completa con la API del
+// navegador. Solo en https (en desarrollo local no molesta).
+function ponerPantallaCompleta() {
+  if (location.protocol !== "https:") return;
+  if (document.fullscreenElement) return;
+  if (matchMedia("(display-mode: fullscreen), (display-mode: standalone)").matches) return;
+  const p = document.documentElement.requestFullscreen &&
+            document.documentElement.requestFullscreen({ navigationUI: "hide" });
+  if (p && p.catch) p.catch(() => {});
+}
+
 document.addEventListener("pointerdown", mantenerPantallaEncendida);
 window.addEventListener("keydown", mantenerPantallaEncendida);
+document.addEventListener("pointerdown", ponerPantallaCompleta);
+window.addEventListener("keydown", ponerPantallaCompleta);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) mantenerPantallaEncendida(); // reactivar al volver a la app
 });
